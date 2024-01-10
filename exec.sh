@@ -6,12 +6,6 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 pushd $SCRIPT_DIR
 
 echo
-echo "Compiling code..."
-./gradlew uberJar
-echo "Code compiled"
-echo
-
-echo
 echo "Bringing up Docker environment..."
 docker compose down
 docker compose up -d

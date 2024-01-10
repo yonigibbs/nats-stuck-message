@@ -1,9 +1,4 @@
 version: '3.7'
-volumes:
-  sedna-db-volume:
-  search-platform-volume:
-  prometheus-data-volume:
-  grafana-data-volume:
 
 services:
   test-nats:
