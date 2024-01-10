@@ -1,0 +1,16 @@
+version: '3.7'
+volumes:
+  sedna-db-volume:
+  search-platform-volume:
+  prometheus-data-volume:
+  grafana-data-volume:
+
+services:
+  test-nats:
+    image: nats:2.10.7
+    container_name: test-nats
+    command: "--jetstream --user nats --pass nats"
+    ports:
+      - '4222:4222'
+      - '6222:6222'
+      - '8222:8222'
