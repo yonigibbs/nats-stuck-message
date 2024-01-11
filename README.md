@@ -16,7 +16,6 @@ number. We have seen two scenarios play out when this condition is triggered:
 Once the message gets into this state, it cannot be delivered until the
 underlying durable consumer is deleted and recreated.
 
-
 ### Description of reproduction program
 
 The reproduction is a Kotlin program using coroutines (this may be relevant).
@@ -28,19 +27,24 @@ time, then ack the `Message`s.
 The program runs in "exploding banana" mode by default; unless `--no-err` is
 passed, we will cancel the root coroutines and tear down the process after a
 few seconds of process run time, triggering a `CancellationException` to be
-sent to the active worker coroutines. This will `nak` any messages being
-processed. Running the program this way in a loop usually causes the bug to be
-triggered within a few minutes.
+sent to the active worker coroutines. In the current code we do nothing in response
+to this exception, the process simply dies. However we have also tried responding
+to the `CancellationException` by NAKing the message. Both behaviours result in
+the same problem.
 
+Running the program this way in a loop usually causes the bug to be triggered
+within a few minutes.
 
 ## Reproduction instructions
 
 1. Run `./build.sh` to gradle-build the code.
 
 2. Run `./exec.sh`, which:
-  - brings up a fresh containerized nats with `docker-compose`
-  - runs this test program in "exploding banana" mode in a loop
-3. Leave the test code running in a loop for a few minutes, and then kill with `C-c`. 
+
+- brings up a fresh containerized nats with `docker-compose`
+- runs this test program in "exploding banana" mode in a loop
+
+3. Leave the test code running in a loop for a few minutes, and then kill with `C-c`.
 4. Run `./exec-no-err.sh` to run the consumer in "normal" mode and clear any
    messages from the queue.
 
@@ -62,7 +66,6 @@ The triggered state looks like this:
 ```
 
 One stuck message on the stream...
-
 
 ```
 [greg@MacBook-Pro:~/git/nats-stuck-message] [main *]  [ 3:08pm]
