@@ -29,8 +29,9 @@ fun main(args: Array<String>) {
         if (!jetStreamManagement.streamNames.contains(STREAM_NAME))
             createAndPopulateStream(jetStreamManagement, jetStream)
 
+        // NatsConsumer(jetStream, STREAM_NAME, CONSUMER_NAME, CONSUMER_SUBJECT).use { natsConsumer ->
         // NatsConsumer2(natsConnection, STREAM_NAME, CONSUMER_NAME, CONSUMER_SUBJECT).use { natsConsumer ->
-        NatsConsumer(jetStream, STREAM_NAME, CONSUMER_NAME, CONSUMER_SUBJECT).use { natsConsumer ->
+        NatsConsumer3(natsConnection, STREAM_NAME, CONSUMER_NAME, CONSUMER_SUBJECT).use { natsConsumer ->
             natsConsumer.start()
 
             Thread.sleep(if (errorMode) 3_000 else Long.MAX_VALUE)
