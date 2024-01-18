@@ -1,15 +1,18 @@
 package org.example
 
-import io.nats.client.*
+import io.nats.client.Connection
+import io.nats.client.ConsumerContext
+import io.nats.client.FetchConsumeOptions
+import io.nats.client.Message
+import io.nats.client.api.ConsumerConfiguration
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import java.time.Duration
 import java.util.concurrent.Executors
 import java.util.concurrent.ThreadFactory
 import java.util.concurrent.atomic.AtomicLong
 
-class NatsConsumer(
-    private val jetStream: JetStream,
+class NatsConsumer2(
+    private val natsConnection: Connection,
     private val streamName: String,
     private val consumerName: String,
     private val consumerSubject: String
@@ -31,39 +34,45 @@ class NatsConsumer(
     private val dispatcher = threadPool.asCoroutineDispatcher()
     private val supervisorJob = SupervisorJob()
     private val scope = CoroutineScope(dispatcher + supervisorJob)
-    private lateinit var jetStreamSubscription: JetStreamSubscription
+    private val streamContext = natsConnection.getStreamContext(streamName)
+    private lateinit var consumerContext: ConsumerContext
     private lateinit var workerJobs: List<Job>
     private lateinit var pollerJob: Job
     private val channel = Channel<Message>(NUM_WORKERS)
 
     fun start() {
         log("Starting NATS consumers...")
-        jetStreamSubscription = jetStream.subscribe(
-            consumerSubject,
-            PullSubscribeOptions.builder()
-                .stream(streamName)
-                .durable(consumerName)
-                .build(),
+        consumerContext = streamContext.createOrUpdateConsumer(
+            ConsumerConfiguration.builder().durable(consumerName).build()
         )
+
         scope.launch {
             pollerJob = scope.launch {
                 while (isActive) {
                     try {
-                        val message = try {
-                            jetStreamSubscription.fetch(1, Duration.ofSeconds(5)).singleOrNull()
-                        } catch (e: IllegalStateException) {
-                            log("JetStream subscription became inactive")
-                            throw CancellationException()
-                        } catch (e: Throwable) {
-                            log("Error fetching message from JetStream:\n$e")
-                            throw e
-                        }
-                        if (message != null) {
-                            log(
-                                "Fetched message ${message.metaData().streamSequence()} from NATS " +
-                                    "(deliveredCount=${message.metaData().deliveredCount()}). Sending to channel."
-                            )
-                            channel.send(message)
+                        consumerContext.fetch(
+                            FetchConsumeOptions.builder()
+                                .maxMessages(1)
+                                .expiresIn(5_000)
+                                .build()
+                        ).use { fetchConsumer ->
+                            val message = try {
+                                fetchConsumer.nextMessage()
+                            } catch (e: IllegalStateException) {
+                                log("JetStream subscription became inactive")
+                                throw CancellationException()
+                            } catch (e: Throwable) {
+                                log("Error fetching message from JetStream:\n$e")
+                                throw e
+                            }
+
+                            if (message != null) {
+                                log(
+                                    "Fetched message ${message.metaData().streamSequence()} from NATS " +
+                                        "(deliveredCount=${message.metaData().deliveredCount()}). Sending to channel."
+                                )
+                                channel.send(message)
+                            }
                         }
                     } catch (e: CancellationException) {
                         log("Coroutine cancelled. Quitting.")
@@ -88,7 +97,7 @@ class NatsConsumer(
                                     "(deliveredCount=${message.metaData().deliveredCount()})."
                             )
 
-                            // Simulate processing taking a bit of time
+                            // Simulate processing taking a bit of time∂
                             delay(1_500)
 
                             message.ack()
@@ -114,7 +123,6 @@ class NatsConsumer(
         try {
             runBlocking {
                 async(Dispatchers.IO, CoroutineStart.DEFAULT) {
-                    if (::jetStreamSubscription.isInitialized) jetStreamSubscription.cleanUnsubscribe()
                     supervisorJob.cancel()
                     if (::workerJobs.isInitialized) workerJobs.joinAll()
                     log("All worker jobs shut down")
@@ -125,16 +133,5 @@ class NatsConsumer(
         }
         threadPool.shutdown()
         log("NATS consumer closed")
-    }
-}
-
-private fun Subscription.cleanUnsubscribe() {
-    try {
-        if (isActive) unsubscribe()
-    } catch (e: IllegalStateException) {
-        // Ignore: this subscription has already been unsubscribed.
-    } catch (e: Throwable) {
-        // Log and continue.
-        log("Error unsubscribing from NATS:\n$e")
     }
 }
